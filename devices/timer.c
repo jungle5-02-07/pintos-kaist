@@ -130,6 +130,13 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	int64_t next_tick;
+	next_tick = get_global_tick();
+
+	// 시간이 증가할 때 sleep queue에서 깨울 스레드 확인/wakeup
+	if (tick >= next_tick) {
+		thread_wakeup(ticks);
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
