@@ -115,6 +115,9 @@ struct thread {
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+/* global_tick 추가 */
+extern int64_t global_tick;
+
 void thread_init (void);
 void thread_start (void);
 
