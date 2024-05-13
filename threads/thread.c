@@ -81,6 +81,8 @@ static tid_t allocate_tid (void);
  * somewhere in the middle, this locates the curent thread. */
 #define running_thread() ((struct thread *) (pg_round_down (rrsp ())))
 
+// 최솟값 매크로
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
