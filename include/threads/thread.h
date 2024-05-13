@@ -92,6 +92,8 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	int64_t sleep_ticks;                 /* check threads wake up time */
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -118,6 +120,10 @@ void thread_init (void);
 void thread_start (void);
 
 void thread_tick (void);
+
+int64_t get_global_ticks(void);
+void set_global_ticks(int64_t new_ticks);
+
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
@@ -135,6 +141,9 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+
+void thread_sleep(int64_t ticks);
+void thread_awake (int64_t ticks);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
