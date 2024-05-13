@@ -116,7 +116,7 @@ struct thread {
 extern bool thread_mlfqs;
 
 /* global_tick 추가 */
-extern int64_t global_tick;
+extern int64_t global_tick; // sleep_list 에서 대기중인 스레드 wakeup_tick의 최솟값
 
 void thread_init (void);
 void thread_start (void);
