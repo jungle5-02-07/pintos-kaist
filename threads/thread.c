@@ -11,6 +11,8 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+/* list.h include */
+#include "lib/kernel/list.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -56,6 +58,9 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+/* global_tick 선언 */
+int64_t global_tick;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -115,6 +120,9 @@ thread_init (void) {
 
 	/*sleep_list 초기화*/
 	list_init (&sleep_list);
+
+	/*global_tick 초기화*/
+	global_tick = INT64_MAX;
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -312,6 +320,63 @@ thread_yield (void) {
 		list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+}
+
+/* thread_sleep 구현 */
+// 현재 스레드를 지정된 ticks 만큼 sleep상태로 전환하는 함수
+void
+thread_sleep(int64_t ticks) {
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+
+	old_level = intr_disable ();
+	if (curr != idle_thread) { // if the current thread is not idle thread,
+		// 
+		curr->wakeup_tick = ticks;// store the local tick to wake up 부분 구현
+		
+		list_push_back (&sleep_list, &curr->elem); // sleep queue에 삽입
+		set_global_tick(ticks); // update the global tick(if necessary) 부분 구현
+		do_schedule(THREAD_BLOCKED); // change the state of the caller thread to BLOCKED, call schedule 부분 구현
+	}
+	intr_set_level (old_level); // 스레드의 상태를 다시 돌려놓는 함수
+	
+}
+
+// sleep_list의 최소 thread보다 현재시간 tick이 큰 경우, timer_interrupt에서 호출
+void
+thread_wakeup(int64_t ticks) {
+	/*global_tick 업데이트*/
+	global_tick = INT64_MAX;
+	struct list_elem *temp_list_elem = list_begin(&sleep_list);
+	struct thread *t;
+
+	for (temp_list_elem; temp_list_elem != list_end(&sleep_list);) {
+		/* list_entry는 현재 element의 thread 포인터를 반환
+			struct list_elem *t == (struct thread *t) &t->elem
+			(struct list_elem) example_name == (struct thread *t) t->elem
+			t->elem 의 값 == struct list_elem의 변수명*/
+
+		t = list_entry(temp_list_elem, struct thread, elem);
+
+		if(t->wakeup_tick <= ticks){
+			temp_list_elem = list_remove(&t->elem);
+			thread_unblock(t);
+		} else {
+			set_global_tick(t->wakeup_tick);
+			temp_list_elem = list_next(temp_list_elem);
+		}
+	}
+}
+
+void
+set_global_tick(int64_t ticks) {
+	global_tick = MIN(global_tick, ticks);
+	// if(ticks > get_global_tick()) global_tick = ticks;
+}
+
+int64_t
+get_global_tick(void){
+	return global_tick;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
