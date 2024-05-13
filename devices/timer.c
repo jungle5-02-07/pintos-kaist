@@ -101,7 +101,10 @@ timer_sleep (int64_t ticks) {
 	// while (timer_elapsed (start) < ticks) // timer_elapsed -> start 이후 tick이 얼마나 지났는지
 	// 	thread_yield (); // 현재 cpu 점유를 버리고 ready_list로 들어간다.
 
-	if ( timer_elapsed (start) < ticks ) {
+	// timer_elapsed()를 호출한 시점과 start를 호출한 시점이 0보다 큰 아주 작은 값이기 때문에
+	// 전달 받은 ticks가 0 or 음수인지 체크하기 위해 아래 조건문이 사용되었음.
+	if ( timer_elapsed (start) <= ticks ) {
+
 		thread_sleep(start + ticks);
 	}
 
