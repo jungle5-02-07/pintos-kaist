@@ -8,6 +8,9 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 
+/* 외부에서 선언된 sleep_list 참조 */
+extern struct list sleep_list;
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -73,11 +76,10 @@ timer_calibrate (void) {
 /* Returns the number of timer ticks since the OS booted. */
 int64_t
 timer_ticks (void) {
-	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks;
-	intr_set_level (old_level);
-	barrier ();
-	return t;
+	enum intr_level old_level = intr_disable();
+    int64_t t = ticks;
+    intr_set_level(old_level);
+    return t;
 }
 
 /* Returns the number of timer ticks elapsed since THEN, which
@@ -90,11 +92,20 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	// int64_t start = timer_ticks ();
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	// ASSERT (intr_get_level () == INTR_ON);
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield ();
+	if (ticks <= 0)
+        return;
+
+    ASSERT(!intr_context());
+    enum intr_level old_level = intr_disable();
+
+    thread_sleep(ticks);  // 스레드를 sleep 큐에 삽입
+
+    intr_set_level(old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -125,7 +136,18 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick ();
+    thread_tick();
+
+    struct list_elem *e = list_begin(&sleep_list);
+    while (e != list_end(&sleep_list)) {
+        struct thread *t = list_entry(e, struct thread, elem);
+        if (t->wakeup_tick <= ticks) {
+            e = list_remove(e); /* sleep 큐에서 제거 */
+            thread_unblock(t);  /* 스레드 깨우기 */
+        } else {
+            break; /* 더 이상 깨울 스레드가 없음 */
+        }
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
