@@ -145,6 +145,12 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+/* alarm 함수 선언 */
+void thread_sleep(int64_t ticks); // 실행중인 스레드를 sleep
+void thread_wakeup(int64_t ticks); // sleep queue에서 스래드 wakeup
+void set_global_tick(int64_t ticks); // 최소 틱 스레드로 global_tick 설정
+int64_t get_global_tick(void); // global_tick 반환
+
 void do_iret (struct intr_frame *tf);
 
 #endif /* threads/thread.h */
