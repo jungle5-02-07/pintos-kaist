@@ -349,11 +349,12 @@ thread_sleep(int64_t ticks) {
 	ASSERT(!intr_context());
 
 	old_level = intr_disable (); // 인터럽트 OFF
+
 	if (curr != idle_thread) { // 현재 스레드가 idle thread인지 확인
 		curr -> sleep_ticks = ticks; //  tick 추가 for wake up
-		// list_push_back(&sleep_list, &(curr -> elem));  // 대기 큐로 변수 할당
 		list_push_back(&sleep_list, &curr -> elem);  // 대기 큐로 변수 할당
-		set_global_ticks(ticks);
+		if ( get_global_ticks() > curr -> sleep_ticks ) 
+				set_global_ticks( curr -> sleep_ticks );
 		thread_block(); // block + 새로운 스케줄 생성 ( 내부에서 현재 스레드를 Running으로 바꿔줌 )
 	}
 	
@@ -362,11 +363,10 @@ thread_sleep(int64_t ticks) {
 	return;
 }
 
-
-
 void thread_awake (int64_t ticks) { // 인자로 global tick 받을 에정
 	struct list_elem *e = list_begin(&sleep_list);
 
+	set_global_ticks(INT64_MAX);
 	while ( e != list_end(&sleep_list) ) // 해당 리스트의 마지막 요소 ( 가드 노드 )까지 순회하며 탐색
 	{
 		// 현재 list_elem에서 원본 스레드 구조체로의 포인터를 얻음

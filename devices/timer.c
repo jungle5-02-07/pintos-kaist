@@ -138,13 +138,11 @@ timer_print_stats (void) {
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
-	int64_t global_ticks;
-
 	ticks++;
 	thread_tick ();
 
 
-	if ( global_ticks = get_global_ticks() <= ticks ) {
+	if ( get_global_ticks() <= ticks ) {
 		thread_awake(ticks); //  global tick과 sleep_list의 스레드를 비교, 깨울 스레드는 깨움
 	}
 	
