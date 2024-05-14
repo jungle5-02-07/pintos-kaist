@@ -15,29 +15,36 @@
 #include "userprog/process.h"
 #endif
 
-/* Random value for struct thread's `magic' member.
-   Used to detect stack overflow.  See the big comment at the top
-   of thread.h for details. */
+/* Sleep 큐 */
+struct list sleep_list; // sleep_list 선언
+
+/* wakeup_tick 비교 함수 */
+bool cmp_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+void thread_sleep(int64_t ticks); // 함수 선언
+
+/* struct thread의 magic 멤버(구조체의 구성요소)를 위한 임의의 값입니다.
+스택 오버플로를 감지하는 데 사용 */
 #define THREAD_MAGIC 0xcd6abf4b
 
-/* Random value for basic thread
-   Do not modify this value. */
+/* 기본 스레드를 위한 임의의 값
+   이 값을 수정하지 마세요. */
 #define THREAD_BASIC 0xd42df210
 
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
+/* THREAD_READY 상태에 있는 프로세스 목록, 즉,
+   실행 준비는 되어 있지만 실제로 실행 중이지 않은 프로세스입니다. */
 static struct list ready_list;
 
-/* Idle thread. */
+/* 유휴 스레드*/
 static struct thread *idle_thread;
 
-/* Initial thread, the thread running init.c:main(). */
+/* 초기 스레드, init.c:main()을 실행하는 스레드입니다. */
 static struct thread *initial_thread;
 
-/* Lock used by allocate_tid(). */
+/* allocate_tid()에서 사용하는 락입니다. */
 static struct lock tid_lock;
 
-/* Thread destruction requests */
+/* 스레드 파괴 요청 */
 static struct list destruction_req;
 
 /* Statistics. */
@@ -109,12 +116,33 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init(&sleep_list); /* sleep queue 초기화 */
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
+}
+
+void thread_sleep(int64_t ticks) {
+    if (ticks <= 0)
+        return;
+
+    enum intr_level old_level = intr_disable();
+
+    struct thread *current = thread_current();
+    current->wakeup_tick = timer_ticks() + ticks;  // 깨어날 시간 설정
+    list_insert_ordered(&sleep_list, &current->elem, cmp_wakeup_tick, NULL);  // sleep 큐에 삽입
+
+    thread_block();  // 스레드 차단
+    intr_set_level(old_level);
+}
+
+bool cmp_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+    struct thread *ta = list_entry(a, struct thread, elem);
+    struct thread *tb = list_entry(b, struct thread, elem);
+    return ta->wakeup_tick < tb->wakeup_tick;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
