@@ -249,7 +249,7 @@ void
 cond_init (struct condition *cond) {
 	ASSERT (cond != NULL);
 
-	list_init (&cond->waiters);
+	list_init (&cond->waiters);		// 조건변수 초기화
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -281,11 +281,11 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
-	lock_release (lock);
-	sema_down (&waiter.semaphore);
-	lock_acquire (lock);
+	sema_init (&waiter.semaphore, 0);					// 스레드가 조건변수를 기다릴 때 사용하는 세마포어를 초기화
+	list_push_back (&cond->waiters, &waiter.elem);		// 새로 생성한 세마포어 대기 스레드를 조건변수의 대기 리스트에 추가
+	lock_release (lock);								// 현재 스레드가 보유한 lock을 해제
+	sema_down (&waiter.semaphore);						// 새로 생성한 세마포어를 사용하여 현재 스레드 블록
+	lock_acquire (lock);								// 스레드가 다시 실행될 때, 이전에 해제했던 lock을 다시 취득, 해당 스레드가 cond를 기다린 후에 다시 lock을 획득하여 작업하도록
 }
 
 /* If any threads are waiting on COND (protected by LOCK), then
@@ -303,7 +303,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters))
-		sema_up (&list_entry (list_pop_front (&cond->waiters),
+		sema_up (&list_entry (list_pop_front (&cond->waiters),		// 조건변수를 기다리던 가장 높은 우선순위의 스레드에게 세마포어를 준다.
 					struct semaphore_elem, elem)->semaphore);
 }
 
@@ -319,5 +319,5 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	while (!list_empty (&cond->waiters))
-		cond_signal (cond, lock);
+		cond_signal (cond, lock);			// cond를 대기하는 모든 스레드에 cond_signal을 한다.
 }
