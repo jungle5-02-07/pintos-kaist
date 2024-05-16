@@ -60,7 +60,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 bool thread_mlfqs;
 
 /* global_tick 선언 */
-int64_t global_tick;
+static int64_t global_tick;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -222,6 +222,8 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	/* 새 스레드를 ready_list에 삽입하고 나서 실행중인 스레드와 기존 스레드의 우선순위 비교 */
+	max_priority();
 
 	return tid;
 }
@@ -243,8 +245,8 @@ thread_block (void) {
 /* list_push_back에서 사용될 cmp_priority 추가 */
 bool 
 cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-	const struct thread *t_a = list_entry(a, struct thread, elem);
-	const struct thread *t_b = list_entry(b, struct thread, elem);
+	struct thread *t_a = list_entry(a, struct thread, elem);
+	struct thread *t_b = list_entry(b, struct thread, elem);
 
 	return (t_a->priority) > (t_b->priority);
 }
@@ -268,7 +270,7 @@ thread_unblock (struct thread *t) {
 	// list_push_back (&ready_list, &t->elem);
 
 	/* unblock된 스레드를 우선순위에 따라 ready_list에 넣는 기능 추가 */
-	list_insert_ordered(&ready_list, &t->elem, &cmp_priority, NULL);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -330,12 +332,11 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-
+	if (curr != idle_thread){
 		// list_push_back (&ready_list, &curr->elem);
 		/* cpu를 선점 당한 현재 스레드를 priority에 따라 ready queue에 넣어준다. */
-		list_insert_ordered(&ready_list, &curr->elem, &cmp_priority, NULL);
-
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -400,18 +401,13 @@ get_global_tick(void){
 /* ready_list 스레드와 현재 스레드의 priority를 비교 */
 void 
 max_priority(void) {
-	if (list_empty(&ready_list))
-	{
-		return;
-	}
-    
-	int run_priority = thread_current()->priority;
-	struct list_elem *e= list_begin(&ready_list);
-	struct thread *t = list_entry(e, struct thread, elem);
-    
-	if (run_priority < t->priority)
-	{
-		thread_yield();
+	if (!list_empty(&ready_list)) {
+		int run_priority = thread_current()->priority;
+		struct thread *t = list_begin(&ready_list);
+		if (cmp_priority(t, &thread_current()->elem, NULL))
+		{
+			thread_yield();
+		}
 	}
 }
 
