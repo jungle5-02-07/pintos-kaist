@@ -240,6 +240,15 @@ thread_block (void) {
 	schedule ();
 }
 
+/* list_push_back에서 사용될 cmp_priority 추가 */
+bool 
+cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	const struct thread *t_a = list_entry(a, struct thread, elem);
+	const struct thread *t_b = list_entry(b, struct thread, elem);
+
+	return (t_a->priority) < (t_b->priority);
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
