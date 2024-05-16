@@ -409,7 +409,7 @@ thread_set_priority (int new_priority) {
 
 /* priority 재설정 후 ready_list 재정렬 기능 */
 void 
-max_priority(void) {
+test_max_priority(void) {
 	if (list_empty(&ready_list))
 	{
 		return;
