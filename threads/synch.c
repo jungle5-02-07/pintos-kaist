@@ -45,8 +45,8 @@ void
 sema_init (struct semaphore *sema, unsigned value) {
 	ASSERT (sema != NULL);
 
-	sema->value = value;
-	list_init (&sema->waiters);
+	sema->value = value;			// 세마포어 값 초기화
+	list_init (&sema->waiters);		// 세마포어 waiters list 초기화
 }
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
@@ -64,13 +64,13 @@ sema_down (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 	ASSERT (!intr_context ());
 
-	old_level = intr_disable ();
-	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
-		thread_block ();
+	old_level = intr_disable ();										// 세마포어 작동 도중, 인터럽트를 비활성화하여 중간에 다른 작업이 실행될 수 없도록 함
+	while (sema->value == 0) {											// 임계구역에 접근중인 스레드가 있어서 세마포어가 0이된 경우
+		list_push_back (&sema->waiters, &thread_current ()->elem);		// 현재(세마포어에 접근한) 스레드를 wait list 맨 뒤에 넣는다.
+		thread_block ();												// 현재 스레드를 blocked 상태로 만든다.
 	}
-	sema->value--;
-	intr_set_level (old_level);
+	sema->value--;														// 세마포어 값을 1 줄인다.(세마포어 사용중)
+	intr_set_level (old_level);											// 인터럽트를 다시 활성화
 }
 
 /* Down or "P" operation on a semaphore, but only if the
@@ -108,12 +108,12 @@ sema_up (struct semaphore *sema) {
 
 	ASSERT (sema != NULL);
 
-	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
+	old_level = intr_disable ();											// 인터럽트 비활성화
+	if (!list_empty (&sema->waiters))										// 세마포어 대기중인 항목이 있을 경우,
+		thread_unblock (list_entry (list_pop_front (&sema->waiters),		// 대기중인 항목 하나를 pop하고, blocked 상태를 해제한다.
 					struct thread, elem));
-	sema->value++;
-	intr_set_level (old_level);
+	sema->value++;															// 세마포어 값을 1 올린다.(세마포어 반납)
+	intr_set_level (old_level);												// 인터럽트 활성화
 }
 
 static void sema_test_helper (void *sema_);
