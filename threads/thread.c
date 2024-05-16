@@ -246,7 +246,7 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	const struct thread *t_a = list_entry(a, struct thread, elem);
 	const struct thread *t_b = list_entry(b, struct thread, elem);
 
-	return (t_a->priority) < (t_b->priority);
+	return (t_a->priority) > (t_b->priority);
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -268,7 +268,7 @@ thread_unblock (struct thread *t) {
 	// list_push_back (&ready_list, &t->elem);
 
 	/* unblock된 스레드를 우선순위에 따라 ready_list에 넣는 기능 추가 */
-	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
+	list_insert_ordered(&ready_list, &t->elem, &cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
