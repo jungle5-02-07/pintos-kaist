@@ -401,6 +401,19 @@ get_global_tick(void){
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	
+	/* priority 재설정 후 ready_list 재정렬 기능 추가*/
+	if (!list_empty(&ready_list)) // list가 비지 않았다면
+	{
+		struct list_elem *e= list_begin(&ready_list); // ready_list의 시작 스레드의 elem
+		struct thread *t = list_entry(e, struct thread, elem); // 시작 스레드 elem으로 스레드 구조체를 불러옴
+		
+		if (new_priority < t->priority) // 현재 변경된 스레드 priority와 대기중인 큐의 가장 큰 priority와 비교
+		{
+			thread_yield(); // 대기중이던 스레드의 priority가 더 크면 양보, thread_yield() 내에 ready_list 정렬이 구현돼있음.
+		}
+	}
+
 }
 
 /* Returns the current thread's priority. */
