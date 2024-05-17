@@ -66,7 +66,8 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();										// 세마포어 작동 도중, 인터럽트를 비활성화하여 중간에 다른 작업이 실행될 수 없도록 함
 	while (sema->value == 0) {											// 임계구역에 접근중인 스레드가 있어서 세마포어가 0이된 경우
-		list_push_back (&sema->waiters, &thread_current ()->elem);		// 현재(세마포어에 접근한) 스레드를 wait list 맨 뒤에 넣는다.
+		// list_push_back (&sema->waiters, &thread_current ()->elem);		// 현재(세마포어에 접근한) 스레드를 wait list 맨 뒤에 넣는다.
+		list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
 		thread_block ();												// 현재 스레드를 blocked 상태로 만든다.
 	}
 	sema->value--;														// 세마포어 값을 1 줄인다.(세마포어 사용중)
@@ -109,10 +110,15 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();											// 인터럽트 비활성화
-	if (!list_empty (&sema->waiters))										// 세마포어 대기중인 항목이 있을 경우,
+	if (!list_empty (&sema->waiters)) {										// 세마포어 대기중인 항목이 있을 경우,
+		/* 실행 도중 우선순위가 변경됐을 경우를 고려하여 wait list 정렬 */
+		list_sort(&sema->waiters, cmp_priority, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),		// 대기중인 항목 하나를 pop하고, blocked 상태를 해제한다.
 					struct thread, elem));
+	}
 	sema->value++;															// 세마포어 값을 1 올린다.(세마포어 반납)
+	/* unblock시 선점 기능 추가 */
+	max_priority();
 	intr_set_level (old_level);												// 인터럽트 활성화
 }
 
@@ -282,7 +288,9 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);					// 스레드가 조건변수를 기다릴 때 사용하는 세마포어를 초기화
-	list_push_back (&cond->waiters, &waiter.elem);		// 새로 생성한 세마포어 대기 스레드를 조건변수의 대기 리스트에 추가
+	// list_push_back (&cond->waiters, &waiter.elem);		// 새로 생성한 세마포어 대기 스레드를 조건변수의 대기 리스트에 추가
+	/* cond var의 waiters list에 priority 순으로 삽입 */
+	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sem_priority, NULL);
 	lock_release (lock);								// 현재 스레드가 보유한 lock을 해제
 	sema_down (&waiter.semaphore);						// 새로 생성한 세마포어를 사용하여 현재 스레드 블록
 	lock_acquire (lock);								// 스레드가 다시 실행될 때, 이전에 해제했던 lock을 다시 취득, 해당 스레드가 cond를 기다린 후에 다시 lock을 획득하여 작업하도록
@@ -302,9 +310,12 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	if (!list_empty (&cond->waiters)) {
+		/* 실행 도중 우선순위가 변경됐을 경우를 고려하여 wait list 정렬 */
+		list_sort(&cond->waiters, cmp_sem_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),		// 조건변수를 기다리던 가장 높은 우선순위의 스레드에게 세마포어를 준다.
 					struct semaphore_elem, elem)->semaphore);
+	}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -320,4 +331,14 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);			// cond를 대기하는 모든 스레드에 cond_signal을 한다.
+}
+
+bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+	struct semaphore_elem *sa = list_entry(a, struct semaphore_elem, elem);
+	struct semaphore_elem *sb = list_entry(b, struct semaphore_elem, elem);
+
+	struct list_elem *ta = list_begin(&sa->semaphore.waiters);
+	struct list_elem *tb = list_begin(&sb->semaphore.waiters);
+	return cmp_priority(ta, tb, NULL);
 }

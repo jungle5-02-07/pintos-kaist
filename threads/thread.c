@@ -352,11 +352,11 @@ thread_sleep(int64_t ticks) {
 	if (curr != idle_thread) { // if the current thread is not idle thread,
 		// 
 		curr->wakeup_tick = ticks;// store the local tick to wake up 부분 구현
-		
 		list_push_back (&sleep_list, &curr->elem); // sleep queue에 삽입
-		set_global_tick(ticks); // update the global tick(if necessary) 부분 구현
-		do_schedule(THREAD_BLOCKED); // change the state of the caller thread to BLOCKED, call schedule 부분 구현
+		
 	}
+	set_global_tick(ticks); // update the global tick(if necessary) 부분 구현
+	do_schedule(THREAD_BLOCKED); // change the state of the caller thread to BLOCKED, call schedule 부분 구현
 	intr_set_level (old_level); // 스레드의 상태를 다시 돌려놓는 함수
 	
 }
@@ -399,15 +399,20 @@ get_global_tick(void){
 }
 
 /* ready_list 스레드와 현재 스레드의 priority를 비교 */
-void 
-max_priority(void) {
-	if (!list_empty(&ready_list)) {
-		int run_priority = thread_current()->priority;
-		struct thread *t = list_begin(&ready_list);
-		if (cmp_priority(t, &thread_current()->elem, NULL))
-		{
-			thread_yield();
-		}
+void max_priority(void)
+{
+	if (list_empty(&ready_list))
+	{
+		return;
+	}
+    
+	int run_priority = thread_current()->priority;
+	struct list_elem *e= list_begin(&ready_list);
+	struct thread *t = list_entry(e, struct thread, elem);
+    
+	if (run_priority < t->priority)
+	{
+		thread_yield();
 	}
 }
 

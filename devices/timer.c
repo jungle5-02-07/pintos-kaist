@@ -95,10 +95,9 @@ timer_sleep (int64_t ticks) {
 	ASSERT (intr_get_level () == INTR_ON);
 	// while (timer_elapsed (start) < ticks)
 	// 	thread_yield ();
+	// sleep_list와 block/unblock을 사용하도록 수정
+	thread_sleep(start + ticks);
 
-	if (timer_elapsed (start) < ticks) {
-		thread_sleep(start + ticks);
-	}
 }
 
 /* Suspends execution for approximately MS milliseconds. */
