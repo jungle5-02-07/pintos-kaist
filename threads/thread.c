@@ -225,12 +225,13 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+
 	/* Add to run queue. */
 	thread_unblock (t); // ?? READY ??
 
 	/* Compare the priorites of the currently running thread and the newly instered one.
 	*  Yield the CPU if the newly arriving thtead has higher priority */
-	check_priority();
+	check_preemption();
 
 	return tid;
 }
@@ -347,9 +348,14 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	struct thread *t = thread_current();
 
-	check_priority();
+	t -> original_priority = new_priority; // 스레드의 원래 우선순위를 갱신
+	t -> priority = get_donation_priority(t); // 우선순위 양도를 고려한 우선 순위 갱신
+
+	donate_nested_priority (t);
+
+	check_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -490,8 +496,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
-	t->donated_priority = 0;
+	t->original_priority = priority; // 원래 우선순위를 할당
 	t->magic = THREAD_MAGIC;
+	t->wait_on_lock = NULL; // LOCK 관련 데이터 초기화
+	list_init(&t -> donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -511,7 +519,7 @@ next_thread_to_run (void) {
 void
 do_iret (struct intr_frame *tf) {
 	__asm __volatile(
-			"movq %0, %%rsp\n"
+			"movq %0, %%rsp\n" 
 			"movq 0(%%rsp),%%r15\n"
 			"movq 8(%%rsp),%%r14\n"
 			"movq 16(%%rsp),%%r13\n"
@@ -675,10 +683,16 @@ allocate_tid (void) {
 	return tid;
 }
 
-void check_priority (void) {
+void check_preemption (void) {
+
+	if (list_empty(&ready_list) || thread_current() == idle_thread) {
+		return;
+	}
+
 	struct list_elem *begin = list_begin(&ready_list);
 	struct thread *t = list_entry(begin, struct thread, elem);
-
-	if ( !list_empty(&ready_list) && thread_current() -> priority < t -> priority )
+	
+	// 새로 들어온 스레드의 우선순위가 현재 실행중인 스레드보다 높은 경우 Preemtion(선점)이 발생.
+	if (thread_current() -> priority < t -> priority )
 		thread_yield();
 }
