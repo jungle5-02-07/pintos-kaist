@@ -96,6 +96,12 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	/* priority donation 항목 추가 */
+	int init_priority;
+	struct lock *wait_on_lock;
+	struct list donations;
+	struct list_elem d_elem;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -154,6 +160,11 @@ int64_t get_global_tick(void); // global_tick 반환
 /* priority scheduling 함수 선언 */
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void max_priority(void);
+
+/* priority donation관련 함수 선언*/
+void donate_priority (void);
+void remove_with_lock (struct lock *);
+void refresh_priority (void);
 
 void do_iret (struct intr_frame *tf);
 

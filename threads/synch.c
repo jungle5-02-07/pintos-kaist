@@ -194,8 +194,16 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	/* priority donation 관련 수정내용 */
+	struct thread *t = thread_current();
+	if(lock->holder != NULL) { 	// lock이 점유중인 경우(사용불가인 경우)
+		t->wait_on_lock = lock; // lock의 주소를 저장
+		list_push_back(&lock->holder->donations, &t->d_elem); // lock의 holder의 donation리스트에 스레드 표시(d_elem)을 해놓는다.
+		donate_priority(); // priority를 donate하는 함수 추가
+	}
+	sema_down (&lock->semaphore); // lock이 사용중인 경우 t는 위 과정을 거친 후 sema_down에 갇힌다.
+	t->wait_on_lock = NULL; // t가 sema_down에서 나온 후, lock을 점유하면 wait_on_lock은 다시 null
+	lock->holder = t; // 해당 lock의 holder는 t가 된다.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -229,6 +237,9 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	lock->holder = NULL;
+	/* priority donation 관련 코드 추가*/
+	remove_with_lock(lock); // lock이 해제됐을 때 해제된 lock을 donation list에서 제거
+	refresh_priority(); // 적절한 priority로 설정 
 	sema_up (&lock->semaphore);
 }
 
@@ -342,3 +353,42 @@ bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void
 	struct list_elem *tb = list_begin(&sb->semaphore.waiters);
 	return cmp_priority(ta, tb, NULL);
 }
+/* lock_release에서 lock이 해제되고, 해제된 lock으로부터 받은 donation을 리스트에서 빼는 기능 */
+void remove_with_lock (struct lock *lock)
+{
+	struct thread *t = thread_current(); // 현재 스레드(lock 해제할 스레드)
+	struct list_elem *e = list_begin(&t->donations); // donation리스트 첫번째 t의 elem
+ 
+	for (e ; e != list_end((&t->donations));) // donation리스트 첫번째 elem부터 차례로 순회
+	{
+		struct thread *cur = list_entry(e, struct thread, d_elem); // elem을 t로 만드는 커서
+		
+		if (cur->wait_on_lock == lock) // 위 donations list에서 해당 lock과 관련된 donation을 모두 제거
+		{
+			e = list_remove(e);
+		}
+		else
+		{
+			e = list_next(e);
+		}
+	}
+}
+
+/* donation을 정렬하고, 아직 priority가 있다면(multiple lock), 적절한 donation을 가져온다. */
+void refresh_priority (void)
+{
+	struct thread *curr = thread_current();
+	curr->priority = curr->init_priority; // donation을 받기 전으로 되돌림
+	
+	if (list_empty(&curr->donations) == false) // 받을 수 있는 donation이 있을 때
+	{
+		list_sort(&curr->donations, &cmp_priority, NULL); // donation list 정렬
+		struct thread *high; // list 에서 elem으로부터 thread를 받아올 변수
+		high = list_entry(list_front(&curr->donations), struct thread, d_elem); // 내림차순으로 정렬한 list의 맨 앞 스레드를 가져움
+		if (high->priority > curr->priority) // 받은 donation 중 가장 높은 donation이 현재 priority보다 높을 때
+		{
+			curr->priority = high->priority; // donation을 받는다.
+		}
+	}
+}
+

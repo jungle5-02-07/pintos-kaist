@@ -420,7 +420,12 @@ void max_priority(void)
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	/* init_priority 업데이트 */
+	thread_current ()->init_priority = new_priority;
 	
+	/* lock을 보유중이던 스레드의 priority가 재설정된 경우 적절한 priority 재설정 */
+	refresh_priority();
+
 	/* priority 재설정 후 ready_list 재정렬 기능 추가*/
 	max_priority();
 
@@ -521,6 +526,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	/* priority donation을 위해 추가한 멤버 초기화 */
+	t->init_priority = priority;
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -699,4 +709,25 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+/* priority donation을 위한 함수 추가 */
+void donate_priority (void)
+{
+	int cnt = 0;
+	struct thread *t = thread_current();
+	int cur_priority = t->priority;
+ 
+	while ( cnt < 9 )
+	{
+		cnt++;
+		if (t->wait_on_lock == NULL) // 내가 기다리는 lock이 없으면 탈출
+		{
+			break;
+		}
+		
+		t = t->wait_on_lock->holder; // 아닐 경우 내가 기다리는 lock의 holder의 wait_on_lock을 확인
+		// 현재 실행되는 스레드의 priority가 가장 높은 priority일 것이기 때문에 따로 priority를 비교하지 않음
+		t->priority = cur_priority;	 // priority donation
+	}
 }
