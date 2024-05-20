@@ -20,6 +20,9 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
+/* Set Global Ticks for sleep and awake */
+static int64_t global_ticks;
+
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -93,8 +96,19 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	
+	// busy wait을 block semaphore로 개선
+	// while (timer_elapsed (start) < ticks) // timer_elapsed -> start 이후 tick이 얼마나 지났는지
+	// 	thread_yield (); // 현재 cpu 점유를 버리고 ready_list로 들어간다.
+
+	// timer_elapsed()를 호출한 시점과 start를 호출한 시점이 0보다 큰 아주 작은 값이기 때문에
+	// 전달 받은 ticks가 0 or 음수인지 체크하기 위해 아래 조건문이 사용되었음.
+	if ( timer_elapsed (start) <= ticks ) {
+
+		thread_sleep(start + ticks);
+	}
+
+
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +140,24 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	if ( thread_mlfqs ) {
+
+		increase_recent_cpu();
+
+		if ( timer_ticks () % TIMER_FREQ == 0 ) { // 1초 (100tick) 마다 priority / recent cpu / load_average 재계산
+			recalc_all();
+		}
+
+		if ( timer_ticks () % 4 == 0 ) { // 4 tick 마다 우선순위 재계산
+			recalc_priority();
+		}
+	} 
+
+	if ( get_global_ticks() <= ticks ) {
+			thread_awake(ticks); //  global tick과 sleep_list의 스레드를 비교, 깨울 스레드는 깨움
+		}
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
