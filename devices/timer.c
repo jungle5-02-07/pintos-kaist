@@ -141,11 +141,23 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 
+	if ( thread_mlfqs ) {
+
+		increase_recent_cpu();
+
+		if ( timer_ticks () % TIMER_FREQ == 0 ) { // 1초 (100tick) 마다 priority / recent cpu / load_average 재계산
+			recalc_all();
+		}
+
+		if ( timer_ticks () % 4 == 0 ) { // 4 tick 마다 우선순위 재계산
+			recalc_priority();
+		}
+	} 
 
 	if ( get_global_ticks() <= ticks ) {
-		thread_awake(ticks); //  global tick과 sleep_list의 스레드를 비교, 깨울 스레드는 깨움
-	}
-	
+			thread_awake(ticks); //  global tick과 sleep_list의 스레드를 비교, 깨울 스레드는 깨움
+		}
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

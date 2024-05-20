@@ -9,6 +9,19 @@
 #include "vm/vm.h"
 #endif
 
+/* Define Macro for floating point calculate */
+#define F (1 << 14) // define fixed-point scale factor 2^14
+#define CONV_TO_FIXED(n) ((n) * F)
+#define CONV_TO_INT_ZERO(x) ((x) / F) // x를 정수로 변환 (0 방향으로 반올림)
+#define CONV_TO_INT_NEAREST(x) ((x) >= 0 ? ((x) + F / 2) / F : ((x) - F / 2) / F) // x를 정수로 변환 (가장 가까운 정수로 반올림)
+#define ADD(x, y) ((x) + (y)) // x와 y를 더하기
+#define SUBTRACT(x, y) ((x) - (y)) // y를 x에서 빼기
+#define ADD_X_N(x, n) ((x) + (n) * F) // x에 n을 더하기 (n은 정수)
+#define SUBTRACT_X_N(x, n) ((x) - (n) * F) // x에서 n을 빼기 (n은 정수)
+#define MULTIPLY(x, y) ((int64_t)(x) * (y) / F) // x와 y를 곱하기
+#define MULTIPLY_X_N(x, n) ((x) * (n)) // x에 n을 곱하기 (n은 정수)
+#define DIVIDE(x, y) (((int64_t)(x) * F) / (y)) // x를 y로 나누기
+#define DIVIDE_X_N(x, n) ((x) / (n)) // x를 n으로 나누기 (n은 정수)
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -96,8 +109,6 @@ struct thread {
 
   struct lock *wait_on_lock;		
 	struct list donations;							/* Donation data struct */
-	struct list_elem d_elem;				/* Donation element */
-
 	int nice;
 	int recent_cpu;
 
@@ -105,6 +116,8 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem d_elem;				/* Donation element */
+	struct list_elem all_elem;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -164,5 +177,13 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 void check_preemption(void);
+
+void increase_recent_cpu (void);
+void calc_priority (struct thread* t);
+void calc_recent_cpu (struct thread* t);
+void calc_load_average (void);
+
+void recalc_priority (void);
+void recalc_all (void);
 
 #endif /* threads/thread.h */

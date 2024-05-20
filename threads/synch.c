@@ -197,7 +197,6 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-
 	struct thread *holder;
 	struct thread *t = thread_current(); // 현재 스레드
 
@@ -207,15 +206,18 @@ lock_acquire (struct lock *lock) {
 	else {
 		holder = lock -> holder;
 		t -> wait_on_lock = lock; // 대기할 Lock을 할당
-		list_insert_ordered( &(holder -> donations), &t -> d_elem, compare_priority, NULL ); // 스레드와 연관있는 doantions을 우선순위 순으로 정렬
-		holder -> priority = get_donation_priority(holder); // lock의 Holder가 가장 높은 우선순위를 양도 받아 스레드에 저장
-		donate_nested_priority (holder);
+
+		if ( !thread_mlfqs ) {
+			list_insert_ordered( &(holder -> donations), &t -> d_elem, compare_priority, NULL ); // 스레드와 연관있는 doantions을 우선순위 순으로 정렬
+			holder -> priority = get_donation_priority(holder); // lock의 Holder가 가장 높은 우선순위를 양도 받아 스레드에 저장
+			donate_nested_priority (holder);
+		}
 	}
 
-	t -> priority = get_donation_priority(t); // 현재 스레드의 우선순위 갱신
-	donate_nested_priority (t);
-
-
+	if ( !thread_mlfqs ) {
+		t -> priority = get_donation_priority(t); // 현재 스레드의 우선순위 갱신
+		donate_nested_priority (t);
+	}
 
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current();
@@ -291,28 +293,30 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	struct thread *t = lock -> holder;
-	// t -> priority = t -> original_priority; // release 될 Lock의 Holder Thread의 우선순위를 초기화.
+	if ( !thread_mlfqs ) {
 
-// holder의 donation에서 M을 빼내기
-	for (struct list_elem *e = list_begin (&(t -> donations)); e != list_end (&(t -> donations)); e = list_next(e)) {
-		
-		struct thread *nt = list_entry (e, struct thread, d_elem);
-		
-		if ( nt -> wait_on_lock == lock ) {
-			list_remove(e); // lock과 관련된 donation thread를 donation list에서 제거
-			// e = ist_remove(e);
-			// struct thread *target_t = list_entry (e, struct thread, d_elem);
-			// nt -> wait_on_lock = NULL;// M의 wait_on-lock을 NULL로 변경
-			// break; -> 빼야됨l
+		struct thread *t = lock -> holder;
+		// t -> priority = t -> original_priority; // release 될 Lock의 Holder Thread의 우선순위를 초기화.
+		// holder의 donation에서 M을 빼내기
+		for (struct list_elem *e = list_begin (&(t -> donations)); e != list_end (&(t -> donations)); e = list_next(e)) {
+			
+			struct thread *nt = list_entry (e, struct thread, d_elem);
+			
+			if ( nt -> wait_on_lock == lock ) {
+				list_remove(e); // lock과 관련된 donation thread를 donation list에서 제거
+				// e = ist_remove(e);
+				// struct thread *target_t = list_entry (e, struct thread, d_elem);
+				// nt -> wait_on_lock = NULL;// M의 wait_on-lock을 NULL로 변경
+				// break; -> 빼야됨l
+			}
 		}
+
+		list_sort(&(t->donations), compare_priority, NULL);
+
+		t -> priority = get_donation_priority(t); // 기존 Lock Holder에게 새로운 우선 순위 양도
+		donate_nested_priority (t);
+
 	}
-
-	list_sort(&(t->donations), compare_priority, NULL);
-
-	t -> priority = get_donation_priority(t); // 기존 Lock Holder에게 새로운 우선 순위 양도
-	donate_nested_priority (t);
-
 
 
 	// Lock의 waiters에서 가장 큰 priority를 가진 스레드를 donation에 연결
