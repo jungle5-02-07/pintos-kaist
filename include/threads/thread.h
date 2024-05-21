@@ -102,6 +102,11 @@ struct thread {
 	struct list donations;
 	struct list_elem d_elem;
 
+	/* MLFQS */
+	int nice; /* for aging */
+	int recent_cpu;
+	struct list_elem allelem; /* 모든 thread의 recent_cpu와 priority값 재계산하기 위함 */
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -165,6 +170,18 @@ void max_priority(void);
 void donate_priority (void);
 void remove_with_lock (struct lock *);
 void refresh_priority (void);
+
+/* mlfqs 관련 함수 선언 */
+void mlfqs_priority(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_load_avg(void);
+void mlfqs_increment(void);
+void mlfqs_recalc_recent_cpu(void);
+void mlfqs_recalc_priority(void);
+void thread_set_nice(int nice UNUSED);
+// int thread_get_nice(void);
+// int thread_get_load_avg(void);
+// int thread_get_recent_cpu(void);
 
 void do_iret (struct intr_frame *tf);
 

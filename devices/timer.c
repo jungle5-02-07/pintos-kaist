@@ -129,6 +129,20 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	/* mlfqs 스케줄러일 경우 작동 */
+	if (thread_mlfqs) {
+
+        mlfqs_increment();
+        if (timer_ticks() % 4 == 0)
+            mlfqs_recalc_priority();
+
+        if (timer_ticks() % 100 == 0) {
+            mlfqs_load_avg();
+            mlfqs_recalc_recent_cpu();
+        }
+    }
+
 	int64_t next_tick;
 	next_tick = get_global_tick();
 

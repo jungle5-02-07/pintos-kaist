@@ -196,10 +196,13 @@ lock_acquire (struct lock *lock) {
 
 	/* priority donation 관련 수정내용 */
 	struct thread *t = thread_current();
+
 	if(lock->holder != NULL) { 	// lock이 점유중인 경우(사용불가인 경우)
 		t->wait_on_lock = lock; // lock의 주소를 저장
 		list_push_back(&lock->holder->donations, &t->d_elem); // lock의 holder의 donation리스트에 스레드 표시(d_elem)을 해놓는다.
-		donate_priority(); // priority를 donate하는 함수 추가
+		/* mlfq에서만 작동 */
+		if(!thread_mlfqs)
+			donate_priority(); // priority를 donate하는 함수 추가
 	}
 	sema_down (&lock->semaphore); // lock이 사용중인 경우 t는 위 과정을 거친 후 sema_down에 갇힌다.
 	t->wait_on_lock = NULL; // t가 sema_down에서 나온 후, lock을 점유하면 wait_on_lock은 다시 null
@@ -237,9 +240,12 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	lock->holder = NULL;
+	/* mlfqs 일 경우 */
+	if (!thread_mlfqs) {
 	/* priority donation 관련 코드 추가*/
-	remove_with_lock(lock); // lock이 해제됐을 때 해제된 lock을 donation list에서 제거
-	refresh_priority(); // 적절한 priority로 설정 
+		remove_with_lock(lock); // lock이 해제됐을 때 해제된 lock을 donation list에서 제거
+		refresh_priority(); // 적절한 priority로 설정
+	}
 	sema_up (&lock->semaphore);
 }
 
