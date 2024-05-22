@@ -66,7 +66,7 @@ initd (void *f_name) {
 
 	process_init ();
 
-	if (process_exec (f_name) < 0)
+	if (process_exec (f_name) < 0) // process_exec 실패시 -1 반환
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -161,8 +161,8 @@ error:
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
-process_exec (void *f_name) {
-	char *file_name = f_name;
+process_exec (void *f_name) { // 프로세스 시작
+	char *file_name = f_name; // void 포인터 f_name을 char포인터로 받아줌
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -181,7 +181,7 @@ process_exec (void *f_name) {
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
-	if (!success)
+	if (!success) // load 실패시 -1 반환
 		return -1;
 
 	/* Start switched process. */
@@ -204,6 +204,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (child_tid) {} // child_tid가 끝날 때까지 기다림
 	return -1;
 }
 
