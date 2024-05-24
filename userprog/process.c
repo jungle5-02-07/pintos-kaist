@@ -14,6 +14,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
@@ -21,6 +22,10 @@
 #ifdef VM
 #include "vm/vm.h"
 #endif
+
+#define MAX_TOKEN_SIZE 128
+#define TOKEN_SPACE 4096
+#define MAX_TOKEN_COUNT (TOKEN_SPACE / MAX_TOKEN_SIZE)
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -40,7 +45,7 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, *real_file_name, *save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -50,8 +55,15 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	real_file_name = strtok_r (file_name, " ", &save_ptr); // parse file name
+
+	// printf("이게 진짜 이름이지롱 히히 : %s", real_file_name);
+
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (real_file_name, PRI_DEFAULT, initd, fn_copy);
+
+	printf("%s\n", fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -158,12 +170,59 @@ error:
 	thread_exit ();
 }
 
+void
+argument_stack (char *tokens[], int count, uintptr_t *rsp) {
+		uintptr_t *args = malloc(count * sizeof(uintptr_t)); // 포인터를 임시 저장할 배열
+    for (int j = count - 1; j >= 0; j--) {
+			int length = strlen(tokens[j]) + 1; // 널 종료 문자를 포함한 길이
+			*rsp -= length; // 스택 포인터를 감소시켜 공간 확보
+			memcpy((void*)*rsp, tokens[j], length); // 사용자 스택에 문자열 복사
+			args[j] = *rsp; // 복사된 문자열의 시작 주소 저장
+
+			printf("tokens[%d] = %s\n", j, tokens[j]);
+
+
+			free(tokens[j]);// 사용된 메모리 해제
+    }
+
+		// 16바이트 정렬을 가정하고 스택 정렬
+    uintptr_t alignment = *rsp % 16;
+    if (alignment != 0) {
+        *rsp -= (16 - alignment);  // 16바이트 정렬을 맞추기 위해 조정
+    }
+
+    // 0을 추가
+    *rsp -= sizeof(uintptr_t);
+    memset((void*)*rsp, 0, sizeof(uintptr_t));  // 0으로 초기화
+
+    // 포인터 배열을 스택에 저장
+    for (int j = count - 1; j >= 0; j--) {
+			*rsp -= sizeof(uintptr_t); // 스택 포인터를 감소시켜 포인터 저장 공간 확보
+			*((uintptr_t*)*rsp) = args[j]; // 포인터 저장
+  
+    }
+
+    // 인자 리스트의 개수 저장
+    *rsp -= sizeof(uintptr_t);
+    *((uintptr_t*)*rsp) = count;
+
+		// 함수의 반환 값 주소 저장		
+		*rsp -= sizeof(void *);
+    *(void **)(*rsp) = NULL;// 실제 사용시 반환 값이 저장될 주소를 지정
+
+    free(args); // 더 이상 사용하지 않는 args 배열 메모리 해제
+}
+
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	char *token, *file_name, *save_ptr, *token_ptr;
 	bool success;
+
+	char *tokens[MAX_TOKEN_COUNT];
+	int count = 0;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -176,13 +235,36 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	// parse the string of file_name
+	// Forward first token as name of new process to thread_create() function
+
+	token = strtok_r(f_name, " ", &token_ptr);
+	while (token != NULL && count < MAX_TOKEN_COUNT) {
+		tokens[count] = (char *)malloc(strlen(token) + 1);  // 메모리 할당
+
+		strlcpy(tokens[count], token, strlen(token) + 1);
+		
+		printf("%d : %s\n", count, tokens[count]);
+		count++;
+
+		token = strtok_r(NULL, " ", &token_ptr);
+	}
+	
+
+	file_name = strtok_r(f_name, " ", &save_ptr);
+	
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (token[0], &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+	palloc_free_page (f_name);
+
 	if (!success)
 		return -1;
+
+	argument_stack (tokens, count, &_if.rsp);
+	hex_dump (_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -201,6 +283,8 @@ process_exec (void *f_name) {
  * does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) {
+	while (child_tid) {}
+
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
