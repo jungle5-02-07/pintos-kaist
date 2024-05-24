@@ -40,7 +40,7 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, *token, *save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -49,6 +49,9 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+
+	// file_name을 파싱하고 첫번째 토큰을 추출해서 프로세스 이름으로 사용
+    // token = strtok_r(fn_copy, " ", &save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -160,33 +163,86 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
-int
-process_exec (void *f_name) { // 프로세스 시작
-	char *file_name = f_name; // void 포인터 f_name을 char포인터로 받아줌
-	bool success;
+int process_exec(void *f_name) {
+    char *file_name = f_name;
+    bool success;
 
-	/* We cannot use the intr_frame in the thread structure.
-	 * This is because when current thread rescheduled,
-	 * it stores the execution information to the member. */
-	struct intr_frame _if;
-	_if.ds = _if.es = _if.ss = SEL_UDSEG;
-	_if.cs = SEL_UCSEG;
-	_if.eflags = FLAG_IF | FLAG_MBS;
+	// intr_frame 권한 설정
+    struct intr_frame _if;
+    _if.ds = _if.es = _if.ss = SEL_UDSEG;
+    _if.cs = SEL_UCSEG;
+    _if.eflags = FLAG_IF | FLAG_MBS;
 
-	/* We first kill the current context */
-	process_cleanup ();
+    process_cleanup();
 
-	/* And then load the binary */
-	success = load (file_name, &_if);
+    /* Parse file_name and save tokens on user stack of new process */
+    char *save_ptr; // 파일 이름이 담겨있는 포인터
+    char *token; // 나눈 인수가 담기는 token
+    int argc = 0; // 인수의 갯수
+    char *argv[128]; // Assuming a maximum number of arguments
 
-	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success) // load 실패시 -1 반환
-		return -1;
+    // 인수를 공백 기준으로 나눠서 파싱
+    for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+        // if (argc >= 128) {
+        //     // Too many arguments
+        //     return -1;
+        // }
+        argv[argc++] = token;
+    }
+	for(int i = 0; i<2;i++){
+		printf("----%s---\n",argv[i]);
+	}
 
-	/* Start switched process. */
-	do_iret (&_if);
-	NOT_REACHED ();
+
+
+    // Push arguments onto the stack in reverse order
+	// 아마도 load 이후에 넣어줘야할 것
+    // uintptr_t *esp = _if.rsp;
+    // for (int i = argc - 1; i >= 0; i--) {
+    //     esp -= strlen(argv[i]) + 1; // Include null terminator
+    //     memcpy(esp, argv[i], strlen(argv[i]) + 1);
+    //     _if.rsp = esp;
+    // }
+
+    // // Word-align the stack pointer
+    // esp -= (uintptr_t)esp % 8;
+
+    // // Push the argv pointers onto the stack
+    // for (int i = argc - 1; i >= 0; i--) {
+    //     esp -= sizeof(char *);
+    //     *(char **)esp = (char *)(_if.rsp - (uintptr_t)argv[i]);
+    //     _if.rsp = esp;
+    // }
+
+    // // Push argv pointer
+    // esp -= sizeof(char **);
+    // *(char ***)esp = (char **)(_if.rsp - (uintptr_t)(argc * sizeof(char *)));
+    // _if.rsp = esp;
+
+    // // Push argc
+    // esp -= sizeof(int);
+    // *(int *)esp = argc;
+    // _if.rsp = esp;
+
+    /* And then load the binary and set up stack */
+    success = load(argv[0], &_if);
+
+    if (!success)
+        return -1;
+
+	// 스택에 인자 넣기
+	void **rspp = &_if.rsp;
+	argument_stack(argv, argc, rspp);
+	_if.R.rdi = argc;
+	_if.R.rsi = (uint64_t)*rspp + sizeof(void*);
+
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*rspp, true);
+
+    palloc_free_page(file_name);
+
+    // Start the new process
+    do_iret(&_if);
+    NOT_REACHED();
 }
 
 
@@ -204,7 +260,10 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (child_tid) {} // child_tid가 끝날 때까지 기다림
+	int i =0;
+	while (i<1000000000) {
+		i++;
+	} // child_tid가 끝날 때까지 기다림
 	return -1;
 }
 
@@ -638,3 +697,41 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+void argument_stack(char **argv, int argc, void **rsp)
+{
+    // Save argument strings (character by character)
+    for (int i = argc - 1; i >= 0; i--)
+    {
+        int argv_len = strlen(argv[i]);
+        for (int j = argv_len; j >= 0; j--)
+        {
+            char argv_char = argv[i][j];
+            (*rsp)--;
+            **(char **)rsp = argv_char; // 1 byte
+        }
+        argv[i] = *(char **)rsp; // 배열에 rsp 주소 넣기
+    }
+
+    // Word-align padding
+    int pad = (int)*rsp % 8;
+    for (int k = 0; k < pad; k++)
+    {
+        (*rsp)--;
+        **(uint8_t **)rsp = 0;
+    }
+
+    // Pointers to the argument strings
+    (*rsp) -= 8;
+    **(char ***)rsp = 0;
+
+    for (int i = argc - 1; i >= 0; i--)
+    {
+        (*rsp) -= 8;
+        **(char ***)rsp = argv[i];
+    }
+
+    // Return address
+    (*rsp) -= 8;
+    **(void ***)rsp = 0;
+}

@@ -215,19 +215,19 @@ thread_create (const char *name, int priority,
 	ASSERT (function != NULL);
 
 	/* Allocate thread. */
-	t = palloc_get_page (PAL_ZERO);
-	if (t == NULL)
+	t = palloc_get_page (PAL_ZERO); // page 할당
+	if (t == NULL)	// NULL 처리
 		return TID_ERROR;
 
 	/* Initialize thread. */
-	init_thread (t, name, priority);
-	tid = t->tid = allocate_tid ();
+	init_thread (t, name, priority); // 스레드 구조체 초기화
+	tid = t->tid = allocate_tid (); // tid 할당
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
-	t->tf.R.rdi = (uint64_t) function;
-	t->tf.R.rsi = (uint64_t) aux;
+	t->tf.R.rdi = (uint64_t) function; // 실행할 함수
+	t->tf.R.rsi = (uint64_t) aux; // 실행할 함수로 전달할 매개변수
 	t->tf.ds = SEL_KDSEG;
 	t->tf.es = SEL_KDSEG;
 	t->tf.ss = SEL_KDSEG;
