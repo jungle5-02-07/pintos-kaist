@@ -183,46 +183,15 @@ int process_exec(void *f_name) {
 
     // 인수를 공백 기준으로 나눠서 파싱
     for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
-        // if (argc >= 128) {
-        //     // Too many arguments
-        //     return -1;
-        // }
+        if (argc >= 128) {
+            // Too many arguments
+            return -1;
+        }
         argv[argc++] = token;
     }
 	for(int i = 0; i<2;i++){
 		printf("----%s---\n",argv[i]);
 	}
-
-
-
-    // Push arguments onto the stack in reverse order
-	// 아마도 load 이후에 넣어줘야할 것
-    // uintptr_t *esp = _if.rsp;
-    // for (int i = argc - 1; i >= 0; i--) {
-    //     esp -= strlen(argv[i]) + 1; // Include null terminator
-    //     memcpy(esp, argv[i], strlen(argv[i]) + 1);
-    //     _if.rsp = esp;
-    // }
-
-    // // Word-align the stack pointer
-    // esp -= (uintptr_t)esp % 8;
-
-    // // Push the argv pointers onto the stack
-    // for (int i = argc - 1; i >= 0; i--) {
-    //     esp -= sizeof(char *);
-    //     *(char **)esp = (char *)(_if.rsp - (uintptr_t)argv[i]);
-    //     _if.rsp = esp;
-    // }
-
-    // // Push argv pointer
-    // esp -= sizeof(char **);
-    // *(char ***)esp = (char **)(_if.rsp - (uintptr_t)(argc * sizeof(char *)));
-    // _if.rsp = esp;
-
-    // // Push argc
-    // esp -= sizeof(int);
-    // *(int *)esp = argc;
-    // _if.rsp = esp;
 
     /* And then load the binary and set up stack */
     success = load(argv[0], &_if);
