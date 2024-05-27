@@ -37,9 +37,26 @@ syscall_init (void) {
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
 
+void halt(void){
+	power_off();
+}
+
+void exit(int status){
+	struct thread *cur = thread_current();
+	cur->exit_status = status;
+	// printf("%s: exit(%d)\n",);
+	thread_exit();
+}
+
+bool create(const char *file, unsigned initial_size){
+	return filesys_create(file, initial_size);
+}
+
+bool remove(const char *file){
+	return filesys_remove(file);
+}
 /* The main system call interface */
-void
-syscall_handler (struct intr_frame *f UNUSED) {
+void syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 	printf ("system call!\n");
 	thread_exit ();

@@ -43,8 +43,7 @@ static const struct test tests[] =
 static const char *test_name;
 
 /* Runs the test named NAME. */
-void
-run_test (const char *name) 
+void run_test (const char *name) 
 {
   const struct test *t;
 

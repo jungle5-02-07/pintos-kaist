@@ -118,10 +118,11 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	struct list_elem d_elem;				/* Donation element */
 	struct list_elem all_elem;
-
+	int exit_status;
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

@@ -57,8 +57,7 @@ filesys_done (void) {
  * Returns true if successful, false otherwise.
  * Fails if a file named NAME already exists,
  * or if internal memory allocation fails. */
-bool
-filesys_create (const char *name, off_t initial_size) {
+bool filesys_create (const char *name, off_t initial_size) {
 	disk_sector_t inode_sector = 0;
 	struct dir *dir = dir_open_root ();
 	bool success = (dir != NULL
@@ -93,8 +92,7 @@ filesys_open (const char *name) {
  * Returns true if successful, false on failure.
  * Fails if no file named NAME exists,
  * or if an internal memory allocation fails. */
-bool
-filesys_remove (const char *name) {
+bool filesys_remove (const char *name) {
 	struct dir *dir = dir_open_root ();
 	bool success = dir != NULL && dir_remove (dir, name);
 	dir_close (dir);

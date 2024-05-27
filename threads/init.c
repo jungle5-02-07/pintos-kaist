@@ -65,8 +65,7 @@ static void print_stats (void);
 int main (void) NO_RETURN;
 
 /* Pintos main program. */
-int
-main (void) {
+int main (void) {
 	uint64_t mem_end;
 	char **argv;
 
@@ -235,8 +234,7 @@ parse_options (char **argv) {
 }
 
 /* Runs the task specified in ARGV[1]. */
-static void
-run_task (char **argv) {
+static void run_task (char **argv) {
 	const char *task = argv[1];
 
 	printf ("Executing '%s':\n", task);
@@ -254,8 +252,7 @@ run_task (char **argv) {
 
 /* Executes all of the actions specified in ARGV[]
    up to the null pointer sentinel. */
-static void
-run_actions (char **argv) {
+static void run_actions (char **argv) {
 	/* An action. */
 	struct action {
 		char *name;                       /* Action name. */
@@ -336,8 +333,7 @@ usage (void) {
 
 /* Powers down the machine we're running on,
    as long as we're running on Bochs or QEMU. */
-void
-power_off (void) {
+void power_off (void) {
 #ifdef FILESYS
 	filesys_done ();
 #endif
