@@ -119,6 +119,9 @@ struct thread {
 	struct list_elem d_elem;				/* Donation element */
 	struct list_elem all_elem;
 
+	// system call 관련 멤버 추가
+	int exit_status;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
