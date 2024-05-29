@@ -234,9 +234,32 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	struct thread *cur = thread_current();
+
+	t -> parent_id = cur -> tid; // 부모 프로세스 정보 추가
+	t -> parent_process = cur; // 부모 프로세스 추가
+
+	t -> is_load = false;
+	t -> is_exit = false;
+
+	sema_init(&t -> exit_sema, 0);
+	sema_init(&t -> load_sema, 0);
+
+	list_push_back(&cur -> child_list, &t -> child_elem); // 부모 프로세스의 자식 프로세스 리스트에 추가
+
+
+	/* 파일 디스크립터 관련 자료 초기화 */
+	t -> fd_table = (struct file**)malloc(sizeof(struct file*) * MAX_TABLE_SIZE); // Fd Table 메모리 할당
+
+	for (int i = 3; i < MAX_TABLE_SIZE; i++) {
+			t -> fd_table[i] = NULL;
+	}
+
+	t -> fd = 3; // Fd 초기값 설정
+
 
 	/* Add to run queue. */
-	thread_unblock (t); // ?? READY ??
+	thread_unblock (t);
 
 	/* Compare the priorites of the currently running thread and the newly instered one.
 	*  Yield the CPU if the newly arriving thtead has higher priority */
@@ -333,6 +356,9 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+
+	sema_up(&thread_current() -> exit_sema);
+
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -541,6 +567,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL; // LOCK 관련 데이터 초기화
 	list_init(&t -> donations);
+	list_init(&t -> child_list);
 
 	/* Put thread in all_list */
 	list_push_front(&all_list, &t -> all_elem);
@@ -671,7 +698,7 @@ do_schedule(int status) {
 		struct thread *victim = // 한명씩 꺼내서
 			list_entry (list_pop_front (&destruction_req), struct thread, elem);
 			list_remove(&victim-> all_elem);
-		palloc_free_page(victim); // 메모리 할당 해제 ( 모가지 날림 )
+			palloc_free_page(victim); // 메모리 할당 해제 ( 모가지 날림 )
 	}
 	thread_current ()->status = status; // 현재 스레드 상태 갱신
 	schedule (); // 새로운 스케줄 생성
