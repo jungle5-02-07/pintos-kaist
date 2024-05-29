@@ -47,7 +47,7 @@ void check_address ( void *addr ) {
 		sys_exit(-1);
 }
 
-pid_t sys_halt (const char *thread_name) {
+void sys_halt (void) {
 	/* Shut down PintOS */
 	power_off();
 }
