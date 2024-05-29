@@ -14,6 +14,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
@@ -21,6 +22,10 @@
 #ifdef VM
 #include "vm/vm.h"
 #endif
+
+#define MAX_TOKEN_SIZE 128
+#define TOKEN_SPACE 4096
+#define MAX_TOKEN_COUNT (TOKEN_SPACE / MAX_TOKEN_SIZE)
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -40,7 +45,7 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, *real_file_name, *save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -50,8 +55,11 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	real_file_name = strtok_r (file_name, " ", &save_ptr); // parse file name
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (real_file_name, PRI_DEFAULT, initd, fn_copy);
+
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -158,12 +166,53 @@ error:
 	thread_exit ();
 }
 
+void
+argument_stack (char *tokens[], int count, uintptr_t *rsp) {
+		uintptr_t *args = malloc(count * sizeof(uintptr_t)); // 포인터를 임시 저장할 배열
+    for (int j = count - 1; j >= 0; j--) {
+			int length = strlen(tokens[j]) + 1; // 널 종료 문자를 포함한 길이
+			*rsp -= length; // 스택 포인터를 감소시켜 공간 확보
+			memcpy((void*)*rsp, tokens[j], length); // 사용자 스택에 문자열 복사
+			args[j] = *rsp; // 복사된 문자열의 시작 주소 저장
+
+			free(tokens[j]);// 사용된 메모리 해제
+    }
+
+		// 8바이트 정렬을 가정하고 스택 정렬
+    int alignment = *rsp % 8;
+    if (alignment != 0) {
+			*rsp -= alignment;  // 8바이트 정렬을 맞추기 위해 조정
+			memset(*rsp, 0, alignment);  // 0으로 초기화
+    }
+
+    // 0을 추가
+    *rsp -= sizeof(char*);
+    memset((char*)*rsp, 0, sizeof(char*));  // 0으로 초기화
+
+    // 포인터 배열을 스택에 저장
+    for (int j = count - 1; j >= 0; j--) {
+			*rsp -= sizeof(char *); // 스택 포인터를 감소시켜 포인터 저장 공간 확보
+			*((char**)*rsp) = args[j]; // 포인터 저장
+  
+    }
+
+		// 함수의 반환 값 주소 저장		
+		*rsp -= sizeof(void *);
+    *(void **)(*rsp) = NULL;// 실제 사용시 반환 값이 저장될 주소를 지정
+
+    free(args); // 더 이상 사용하지 않는 args 배열 메모리 해제
+}
+
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	char *token, *file_name, *save_ptr, *token_ptr;
 	bool success;
+
+	char *tokens[MAX_TOKEN_COUNT];
+	int count = 0;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -176,13 +225,49 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	// parse the string of file_name
+	// Forward first token as name of new process to thread_create() function
+
+	token = strtok_r(f_name, " ", &token_ptr);
+	while (token != NULL && count < MAX_TOKEN_COUNT) {
+		tokens[count] = (char *)malloc(strlen(token) + 1);  // 메모리 할당
+
+		strlcpy(tokens[count], token, strlen(token) + 1);
+		
+		count++;
+
+		token = strtok_r(NULL, " ", &token_ptr);
+	}
+	
+
+	file_name = strtok_r(f_name, " ", &save_ptr);
+	
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (tokens[0], &_if);
+
+
+	struct thread *t = thread_current();
+	t -> is_load = success;
+
+	// 메모리 적재 완료시 부모프로세스 다시 진행
+	sema_up(&t -> load_sema);
+	
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
-		return -1;
+	palloc_free_page (f_name);
+
+	if (!success) {
+		list_remove(&t -> child_elem);
+		remove_child_process(t);
+		thread_exit();
+	}
+
+	argument_stack (tokens, count, &_if.rsp);
+
+	_if.R.rdi = count;
+	_if.R.rsi = _if.rsp + sizeof(void*);
+
+	// hex_dump (_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -201,20 +286,33 @@ process_exec (void *f_name) {
  * does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
-	return -1;
+
+	struct thread *child_thread = get_child_process(child_tid);
+
+	if (child_thread == NULL)
+		return -1;
+
+	sema_down(&child_thread -> exit_sema); // 자식 스레드 끝날때 까지 대기
+
+	list_remove(&child_thread -> child_elem);
+
+	return child_thread -> exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
+	struct file **f = curr -> fd_table;
+
+	for (int i = 3; i < MAX_TABLE_SIZE; i++) { // 프로세스의 모든 파일 닫음
+		if (f[i] != NULL) {
+			file_close(f[i]);
+			f[i] = NULL;
+		}
+	}
+
+	free(f); // 프로세스 내 파일 디스크립터 테이블 메모리 해제
 
 	process_cleanup ();
 }
@@ -256,6 +354,64 @@ process_activate (struct thread *next) {
 	/* Set thread's kernel stack for use in processing interrupts. */
 	tss_update (next);
 }
+
+int process_add_file (struct file *f) {
+	struct thread *t = thread_current();
+
+	for (int fd = 3; fd < MAX_TABLE_SIZE; fd++) { // FD Table을 3부터 순회하며 비어있는 가장 작은 값을 Return 함.
+		if ( t -> fd_table[fd] == NULL ) {
+			 t -> fd_table[fd] = f;
+
+			return fd;
+		}
+	}
+
+	return -1;
+}
+
+struct file *process_get_file(int fd) {
+    struct thread *cur = thread_current(); // 현재 실행 중인 스레드를 가져옴
+
+    if (fd < 2 || fd >= MAX_TABLE_SIZE) { // 파일 디스크립터 값이 유효한지 확인
+        return NULL;
+    }
+
+    // 파일 디스크립터 테이블에서 파일 객체를 가져옴
+    return cur->fd_table[fd];
+}
+
+
+void process_close_file (int fd) {
+	struct thread *t = thread_current();
+	struct file *f = t -> fd_table[fd];
+
+	if (f != NULL) {
+		file_close(f);
+		t -> fd_table[fd] = NULL;
+	}
+
+}
+
+struct thread *get_child_process (int pid) {
+	struct thread *curr = thread_current();
+	struct list_elem* e;
+
+ 	for (e = list_begin(&curr -> child_list); e != list_end(&curr -> child_list); e = list_next(e)) {
+		struct thread *child = list_entry(e, struct thread, child_elem);
+		
+		if (child -> tid == pid) {
+			return child;
+		}
+	}
+	
+	return NULL;
+}
+
+void remove_child_process (struct thread *cp) {
+	list_remove(&cp -> child_elem); // 자식 리스트에서 제거
+	palloc_free_page(cp); // 자식 프로세스 디스크 해제
+}
+
 
 /* We load ELF binaries.  The following definitions are taken
  * from the ELF specification, [ELF1], more-or-less verbatim.  */
@@ -506,7 +662,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
 		/* Get a page of memory. */
 		uint8_t *kpage = palloc_get_page (PAL_USER);
 		if (kpage == NULL)

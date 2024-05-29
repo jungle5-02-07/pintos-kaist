@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
+#include "../userprog/syscall.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -22,6 +24,12 @@
 #define MULTIPLY_X_N(x, n) ((x) * (n)) // x에 n을 곱하기 (n은 정수)
 #define DIVIDE(x, y) (((int64_t)(x) * F) / (y)) // x를 y로 나누기
 #define DIVIDE_X_N(x, n) ((x) / (n)) // x를 n으로 나누기 (n은 정수)
+
+/* Define Max Value of FD Table */
+#define MAX_TABLE_SIZE 64
+
+typedef int pid_t;
+#define PID_ERROR ((pid_t) -1)
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -118,6 +126,21 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	struct list_elem d_elem;				/* Donation element */
 	struct list_elem all_elem;
+
+	/* File Descriptor */
+	struct file **fd_table;
+	int fd;
+
+	pid_t parent_id;
+	struct thread* parent_process;
+	struct list_elem child_elem;
+	struct list child_list;
+
+	bool is_load;	
+	bool is_exit;
+	struct semaphore exit_sema;
+	struct semaphore load_sema;
+	enum thread_status exit_status;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
