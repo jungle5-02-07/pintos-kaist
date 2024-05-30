@@ -44,20 +44,107 @@ void halt(void){
 void exit(int status){
 	struct thread *cur = thread_current();
 	cur->exit_status = status;
-	// printf("%s: exit(%d)\n",);
+	printf("%s: exit(%d)\n",);
 	thread_exit();
 }
 
-bool create(const char *file, unsigned initial_size){
+pid_t fork(const char *thread_name){
+
+}
+
+int exec(const char *cmd_line){
+
+}
+
+int wait(pid_t pid){
+
+}
+
+bool create(const char *file, unsigned initial_size)
+{
 	return filesys_create(file, initial_size);
 }
 
 bool remove(const char *file){
 	return filesys_remove(file);
 }
+
+int open(const char *file){
+
+}
+
+int filesize(int fd){
+
+}
+
+int read(int fd, void *buffer, unsigned size){
+
+}
+
+int write(int fd, const void *buffer, unsigned size){
+
+}
+
+void seek(int fd, unsigned position){
+
+}
+
+unsigned tell(int fd){
+
+}
+
+void close(int fd){
+
+}
+
 /* The main system call interface */
 void syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	int syscall_n = f->R.rax;
+	switch(syscall_n){
+		case SYS_HALT:
+			halt();
+			break;
+
+		case SYS_EXIT:
+			exit(f->R.rdi);
+			break;
+
+		case SYS_FORK:
+			break;
+
+		case SYS_EXEC:
+			break;
+
+		case SYS_WAIT:
+			break;
+		
+		case SYS_CREATE:
+			break;
+
+		case SYS_REMOVE:
+			break;
+
+		case SYS_OPEN:
+			break;
+
+		case SYS_FILESIZE:
+			break;
+		
+		case SYS_READ:
+			break;
+
+		case SYS_WRITE:
+			break;
+
+		case SYS_SEEK:
+			break;
+		
+		case SYS_TELL:
+			break;
+
+		case SYS_CLOSE:
+			break;
+		}
+
 }
