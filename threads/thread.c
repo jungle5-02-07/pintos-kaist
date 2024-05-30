@@ -244,6 +244,7 @@ thread_create (const char *name, int priority,
 
 	sema_init(&t -> exit_sema, 0);
 	sema_init(&t -> load_sema, 0);
+	sema_init(&t -> wait_sema, 0);
 
 	list_push_back(&cur -> child_list, &t -> child_elem); // 부모 프로세스의 자식 프로세스 리스트에 추가
 
@@ -255,7 +256,7 @@ thread_create (const char *name, int priority,
 			t -> fd_table[i] = NULL;
 	}
 
-	t -> fd = 3; // Fd 초기값 설정
+	t -> fdidx = 3; // Fd 초기값 설정
 
 
 	/* Add to run queue. */
@@ -356,8 +357,6 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-
-	sema_up(&thread_current() -> exit_sema);
 
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();

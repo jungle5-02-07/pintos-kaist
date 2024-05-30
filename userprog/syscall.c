@@ -42,9 +42,15 @@ syscall_init (void) {
 	lock_init(&filesys_lock); // 파일 관련 lock 초기화
 }
 
+// 주소 값이 유저 영역에서 사용하는 주소 값인지 확인
 void check_address ( void *addr ) {
-	if ( addr == NULL || is_user_vaddr(addr) == false )
+	struct thread * t = thread_current();
+
+	/* 인자로 받아온 주소가 유저영역의 주소가 아니거나 , 주소가 NULL이거나  해당 페이지가 존재하지 않을경우 프로그램 종료 */
+	if ( addr == NULL || is_user_vaddr(addr) == false || pml4_get_page(t->pml4, addr)== NULL ) {
 		sys_exit(-1);
+	}
+		
 }
 
 void sys_halt (void) {
@@ -52,11 +58,16 @@ void sys_halt (void) {
 	power_off();
 }
 
+pid_t sys_fork (const char *thread_name, struct intr_frame *if_) {
+	return process_fork(thread_name, if_);
+}
+
 void sys_exit (int64_t status) {
 	struct thread *t = thread_current();
 
 	t -> is_exit = true; // 정적으로 종료했는지 여부를 판단하기 위해 is_exit값 저장;
-
+	t -> exit_status = status;
+	
 	printf("%s: exit(%d)\n" , t -> name , status);
 
 	thread_exit();
@@ -174,6 +185,8 @@ int sys_read (int fd, void *buffer, unsigned size) {
 }
 
 int sys_write (int fd, void *buffer, unsigned size) {
+	check_address(buffer);
+
 	int write_byte = -1;
 
 	if (fd == 1) {  // 표준 출력 FD (1) 을 전달받은 경우
@@ -219,19 +232,17 @@ void sys_close (int fd) {
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
-	 // 시스템 호출 번호와 인자들을 저장할 변수들
-	int call_num_ptr;
-	int args[3];  // 최대 3개의 인자를 받는다고 가정
-
-	// 스택 포인터 esp를 사용하여 시스템 콜 넘버를 얻음
-
-	/* Get st ack pointer from interrupt frame */
-  call_num_ptr = f->R.rax;
+syscall_handler (struct intr_frame *f) {
+	// 시스템 호출 번호와 인자들을 저장할 변수들
+	int call_num_ptr = f->R.rax;
 	
 	switch (call_num_ptr) {
 		case SYS_HALT:                 /* Halt the operating system. */
 			sys_halt();
+			break;
+
+		case SYS_FORK:									/* Clone current process. */
+			f -> R.rax = sys_fork((char *)f -> R.rdi, f); 
 			break;
 
 		case SYS_EXIT:                /* Terminate this process. */

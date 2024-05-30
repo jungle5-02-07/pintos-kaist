@@ -129,9 +129,11 @@ struct thread {
 
 	/* File Descriptor */
 	struct file **fd_table;
-	int fd;
+	int fdidx;  // 파일 디스크립터 인덱스
+
 
 	pid_t parent_id;
+	struct intr_frame parent_if;
 	struct thread* parent_process;
 	struct list_elem child_elem;
 	struct list child_list;
@@ -140,7 +142,9 @@ struct thread {
 	bool is_exit;
 	struct semaphore exit_sema;
 	struct semaphore load_sema;
-	enum thread_status exit_status;
+	struct semaphore wait_sema;
+	struct semaphore fork_sema;
+	int exit_status;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

@@ -15,8 +15,10 @@ void syscall_init (void);
 void check_address ( void *addr );
 
 void sys_halt (void);
+// pid_t sys_fork (const char *thread_name, struct intr_frame *if_);
 void sys_exit (int64_t status);
-pid_t sys_exec (const char *cmd_line);
+// pid_t sys_exec (const char *cmd_line);
+int sys_exec(const char *file_name);
 int sys_wait (pid_t pid);
 bool sys_create (const char *file, unsigned initial_size);
 bool sys_remove (const char *file);

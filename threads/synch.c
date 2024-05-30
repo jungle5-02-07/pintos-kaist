@@ -66,6 +66,8 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
+
+		printf("15\n ");
 		list_insert_ordered(&sema -> waiters, &thread_current() -> elem, compare_priority, NULL); // priority-preempt
 		thread_block ();
 	}

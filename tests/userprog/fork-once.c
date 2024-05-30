@@ -7,9 +7,11 @@
 void
 test_main (void) 
 {
-  int pid;
 
-  if ((pid = fork("child"))){
+  printf('여기 0\n');
+  int pid  = fork("child");
+  printf("pid: %d\n", pid);
+  if ((pid)){
     int status = wait (pid);
     msg ("Parent: child exit status is %d", status);
   } else {
