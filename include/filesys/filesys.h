@@ -17,4 +17,7 @@ bool filesys_create (const char *name, off_t initial_size);
 struct file *filesys_open (const char *name);
 bool filesys_remove (const char *name);
 
+// syscall 구현을 위해 전역 lock변수 추가
+extern struct lock filesys_lock;
+
 #endif /* filesys/filesys.h */

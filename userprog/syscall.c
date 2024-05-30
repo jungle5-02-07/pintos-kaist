@@ -7,9 +7,46 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+// exec에서 사용
+#include "threads/palloc.h"
+// create, remove에 사용
+#include "filesys/filesys.h"
+// open, close, filesize에 사용
+#include "filesys/file.h"
+// wirte에 사용
+#include "threads/synch.h"
+// wait에 사용
+#include "userprog/process.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+
+// syscall 관련 함수 선언부
+void halt(void);
+void exit(int status);
+tid_t fork(const char *thread_name, struct intr_frame *f);
+int exec(char *file_name);
+void check_address(const uint64_t *addr);
+bool create(const char *file, unsigned initial_size);
+bool remove(const char *file);
+int open(const char *file);
+int add_file_to_fdt(struct file *file);
+int filesize(int fd);
+int read(int fd, void *buffer, unsigned size);
+static struct file *find_file_by_fd(int fd);
+int write(int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
+void close(int fd);
+void remove_file_from_fdt(int fd);
+
+// seek 관련 추가
+/* An open file. */
+struct file {
+	struct inode *inode;        /* File's inode. */
+	off_t pos;                  /* Current position. */
+	bool deny_write;            /* Has file_deny_write() been called? */
+};
 
 /* System call.
  *
@@ -116,6 +153,10 @@ void exit(int status) {
 	thread_exit();		// 스레드 종료
 }
 
+tid_t fork(const char *thread_name, struct intr_frame *f) {
+	return process_fork(thread_name, f);
+}
+
 // 현재 프로세스를 cmd_line에서 지정된 인수를 전달하여 이름이 지정된 실행 파일로 변경
 int exec(char *file_name) {
 	check_address(file_name);
@@ -148,6 +189,9 @@ void check_address(const uint64_t *addr)
 // 성공일 경우 true, 실패일 경우 false 리턴
 bool create(const char *file, unsigned initial_size) {	// file: 생성할 파일의 이름 및 경로 정보, initial_size: 생성할 파일의 크기
 	check_address(file);
+	if (file == NULL) {
+		exit(-1);
+	}
 	return filesys_create(file, initial_size);
 }
 
@@ -175,3 +219,145 @@ int open(const char *file) {
 	}
 	return fd;
 }
+
+// 현재 프로세스의 fd테이블에 파일 추가
+int add_file_to_fdt(struct file *file) {
+	struct thread *cur = thread_current();
+	struct file **fdt = cur->fd_table;
+
+	// fd의 위치가 제한 범위를 넘지 않고, fdtable의 인덱스 위치와 일치한다면
+	while (cur->fd_idx < FDCOUNT_LIMIT && fdt[cur->fd_idx]) {
+		cur->fd_idx++;
+	}
+
+	// fdt이 가득 찼다면
+	if (cur->fd_idx >= FDCOUNT_LIMIT)
+		return -1;
+
+	fdt[cur->fd_idx] = file;
+	return cur->fd_idx;
+}
+
+// fd인자를 받아 파일 크기 리턴
+int filesize(int fd) {
+	struct file *open_file = find_file_by_fd(fd);
+	if (open_file == NULL) {
+		return -1;
+	}
+	return file_length(open_file);
+}
+
+// fd로 파일 찾는 함수
+static struct file *find_file_by_fd(int fd) {
+	struct thread *cur = thread_current();
+
+	if (fd < 0 || fd >= FDCOUNT_LIMIT) {
+		return NULL;
+	}
+	return cur->fd_table[fd];
+}
+
+int read(int fd, void *buffer, unsigned size) {
+	check_address(buffer);
+
+	int read_result;
+	struct thread *cur = thread_current();
+	struct file *file_fd = find_file_by_fd(fd);
+
+	if (fd == 0) {
+		// read_result = i;
+		*(char *)buffer = input_getc();		// 키보드로 입력 받은 문자를 반환하는 함수
+		read_result = size;
+	}
+	else {
+		if (find_file_by_fd(fd) == NULL) {
+			return -1;
+		}
+		else {
+			lock_acquire(&filesys_lock);
+			read_result = file_read(find_file_by_fd(fd), buffer, size);
+			lock_release(&filesys_lock);
+		}
+	}
+	return read_result;
+}
+
+// buffer로부터 사이즈 쓰기
+int write(int fd, const void *buffer, unsigned size) {
+	check_address(buffer);
+
+	int write_result;
+	lock_acquire(&filesys_lock);
+	if (fd == 1) {
+		putbuf(buffer, size);		// 문자열을 화면에 출력하는 함수
+		write_result = size;
+	}
+	else {
+		if (find_file_by_fd(fd) != NULL) {
+			write_result = file_write(find_file_by_fd(fd), buffer, size);
+		}
+		else {
+			write_result = -1;
+		}
+	}
+	lock_release(&filesys_lock);
+	return write_result;
+}
+
+// 파일 내 위치(offset)로 이동하는 함수
+void seek(int fd, unsigned position) {
+	struct file *seek_file = find_file_by_fd(fd);
+	if (seek_file <= 2) {		// 0: 표준 입력, 1: 표준 출력, 2: 오류 fd일 경우
+		return; 				// 표준 스트림에 대한 위치 이동을 방지
+	}
+	// 파일 포인터를 업데이트한다.
+	seek_file->pos = position;
+}
+
+// 파일의 위치(offset)을 알려주는 함수
+unsigned tell(int fd) {
+	struct file *tell_file = find_file_by_fd(fd);
+	if (tell_file <= 2) {
+		return;
+	}
+	return file_tell(tell_file);
+}
+
+// 열린 파일을 닫는 시스템 콜. 파일을 닫고 fd제거
+void close(int fd) {
+	struct thread *curr = thread_current();
+	struct list_elem *start;
+	for (start = list_begin(&curr->fd_table); start != list_end(&curr->fd_table); start = list_next(start))
+	{
+		struct file_fd *close_fd = list_entry(start, struct file_fd, fd_elem);
+		if (close_fd->fd == fd)
+		{
+			file_close(close_fd->file);
+			list_remove(&close_fd->fd_elem);
+			// close_fd->fd = NULL;
+			// free(close_fd);
+		}
+	}
+	return;
+}
+
+// // 파일 디스크립터 테이블에서 파일 디스크립터를 제거하는 함수
+// void remove_file_from_fdt(int fd) {
+//     struct thread *cur = thread_current();
+
+//     if (fd < 0 || fd >= FDCOUNT_LIMIT) {
+//         return;
+//     }
+
+//     // fd와 연결된 파일을 닫고, 해당 항목을 NULL로 설정
+//     struct file *file = cur->fd_table[fd];
+//     if (file != NULL) {
+//         file_close(file);
+//         cur->fd_table[fd] = NULL;
+//     }
+
+//     // 선택 사항: 만약 제거된 fd가 가장 높은 값이었다면 fd_idx 감소
+//     if (fd == cur->fd_idx - 1) {
+//         cur->fd_idx--;
+//     }
+// }

@@ -210,6 +210,7 @@ tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
+	struct thread *curr;
 	tid_t tid;
 
 	ASSERT (function != NULL);
@@ -234,13 +235,33 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	//fd 초기화
+	t->fd_idx = 3;
+	struct file_fd *fd_zero = malloc(sizeof(struct file_fd));
+	struct file_fd *fd_one = malloc(sizeof(struct file_fd));
+	struct file_fd *fd_two = malloc(sizeof(struct file_fd));
+	fd_zero->fd = 0;
+	fd_zero->file = NULL;
+	fd_one->fd = 1;
+	fd_one->file = NULL;
+	fd_one->fd = 2;
+	fd_one->file = NULL;
+	list_push_back(&t->fd_table, &fd_zero->fd_elem);
+	list_push_back(&t->fd_table, &fd_one->fd_elem);
+	list_push_back(&t->fd_table, &fd_two->fd_elem);
 
+	// 현재 스레드의 child_list에 child_elem 추가
+	curr = thread_current();
+	list_init(&curr->child_list);
+	list_push_back(&curr->child_list, &t->child_elem);
 	/* Add to run queue. */
 	thread_unblock (t); // ?? READY ??
 
 	/* Compare the priorites of the currently running thread and the newly instered one.
 	*  Yield the CPU if the newly arriving thtead has higher priority */
-	check_preemption();
+	// check_preemption();
+	if (t->priority > curr->priority)
+		thread_yield();
 
 	return tid;
 }
@@ -541,6 +562,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL; // LOCK 관련 데이터 초기화
 	list_init(&t -> donations);
+	// syscall 관련 exit_status와 check_child 관련 추가
+	t->exit_status = 0;
+	t->check_child = true;
+	list_init(&t->child_list);
+	list_init(&t->fd_table);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
 
 	/* Put thread in all_list */
 	list_push_front(&all_list, &t -> all_elem);

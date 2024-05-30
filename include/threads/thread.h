@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+// fork를 위한 semaphore
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -40,6 +42,18 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+// syscall 관련 매크로
+#define FDT_PAGES 3 // 파일디스크립터 테이블에 할당할 페이지 수 (thread_create, process_exit)
+#define FDCOUNT_LIMIT FDT_PAGES*(1<<9) // 파일 디스크립터 테이블의 최대 크기
+
+// 파일디스크립터 구조체
+struct file_fd
+{
+	int fd;					  /* fd: 파일 식별자 */
+	struct file *file;		  /* file */
+	struct list_elem fd_elem; /* list 구조체의 구성원 */
+};
 
 /* A kernel thread or user process.
  *
@@ -121,6 +135,23 @@ struct thread {
 
 	// system call 관련 멤버 추가
 	int exit_status;
+
+	struct list *fd_table[FDCOUNT_LIMIT]; // thread_create에서 할당
+	int fd_idx; // fd테이블 인덱스, file descriptor
+	struct file *now_file;
+
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
+	struct semaphore exit_sema;
+
+	struct list_elem child_elem;
+
+	struct intr_frame parent_if;
+	
+	// get_child_with_pid 를 위해 추가
+	struct list child_list;
+
+	bool check_child;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
