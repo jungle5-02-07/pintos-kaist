@@ -92,6 +92,11 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	/* 코드 추가 시작 */ 
+	uint8_t *stack; // 8bit 부호 없는 정수 배열의 시작 주소를 가리킬 수 있다.
+	struct list_elem allelem; // list_elem의 멤버를 포함한 구조체 타입 변수 allelem를 선언한다.
+	/* 코드 추가 끝*/
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
