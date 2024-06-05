@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* NOTE: [Add] 모든 스레드들의 리스트 */
+static struct list all_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -254,8 +257,7 @@ thread_name (void) {
 /* Returns the running thread.
    This is running_thread() plus a couple of sanity checks.
    See the big comment at the top of thread.h for details. */
-struct thread *
-thread_current (void) {
+struct thread *thread_current (void) {
 	struct thread *t = running_thread ();
 
 	/* Make sure T is really a thread.
@@ -292,10 +294,10 @@ thread_exit (void) {
 	NOT_REACHED ();
 }
 
-/* Yields the CPU.  The current thread is not put to sleep and
-   may be scheduled again immediately at the scheduler's whim. */
-void
-thread_yield (void) {
+/* NOTE: CPU를 다른 스레드에게 양보하는 함수
+ * 
+ *  */
+void thread_yield (void) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
 
@@ -538,8 +540,7 @@ do_schedule(int status) {
 	schedule ();
 }
 
-static void
-schedule (void) {
+static void schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
 
