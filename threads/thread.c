@@ -82,6 +82,15 @@ static tid_t allocate_tid (void);
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
+/* TODO: next_tick_to_awake 전역 변수 추가 
+ * sleep_list에서 대기중인 스레드들의 wakeup_tick 값 중 최소값을 저장*/
+/* TEMP: 임시로 다음 일어날 tick 전역 변수 추가 */
+int next_tick_to_awake;
+
+/* TODO: Sleep Queue 자료구조 추가 */
+/* TEMP: sleep queue list*/
+static struct list sleep_list;
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S

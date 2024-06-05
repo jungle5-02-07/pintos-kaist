@@ -97,6 +97,10 @@ struct thread {
 
 	/* NOTE: [Add] 모든 스레드 목록의 리스트 요소 */
 	struct list_elem all_elem;
+	
+	/* TODO: 깨어나야 할 tick을 저장할 변수 추가(wakeup_tick) */
+	/* TEMP: 임시로 타입 설정 */
+	int wakeup_tick;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -145,5 +149,14 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+/* NOTE: [Add] 1. 실행 중인 스레드를 슬립으로 만듦 
+ * 2. sleep queue에서 깨워야할 스레드를 깨움 
+ * 3. 최소 틱을 가진 스레드 저장 
+ * 4. thread.c의 next_tick_to_awake 반환 */
+void thread_sleep(int64_t ticks);
+void thread_awake(int64_t ticks);
+void update_next_tick_to_awake(int64_t ticks);
+int64_t get_next_tick_to_awake(void);
 
 #endif /* threads/thread.h */
