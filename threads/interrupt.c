@@ -251,8 +251,7 @@ intr_register_int (uint8_t vec_no, int dpl, enum intr_level level,
 
 /* Returns true during processing of an external interrupt
    and false at all other times. */
-bool
-intr_context (void) {
+bool intr_context (void) {
 	return in_external_intr;
 }
 

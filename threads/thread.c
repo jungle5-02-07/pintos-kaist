@@ -31,6 +31,12 @@ static struct list ready_list;
 /* NOTE: [Add] 모든 스레드들의 리스트 */
 static struct list all_list;
 
+/* NOTE: [Part1] 상태가 THREAD_BLOCKED인 스레드들의 리스트 */
+static struct list sleep_list;
+
+/* sleep_list에서 대기중인 스레드들의 wakeup_tick 값 중 최소값을 저장하는 전역변수 */
+static int64_t global_tick;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -82,14 +88,6 @@ static tid_t allocate_tid (void);
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
-/* TODO: next_tick_to_awake 전역 변수 추가 
- * sleep_list에서 대기중인 스레드들의 wakeup_tick 값 중 최소값을 저장*/
-/* TEMP: 임시로 다음 일어날 tick 전역 변수 추가 */
-int next_tick_to_awake;
-
-/* TODO: Sleep Queue 자료구조 추가 */
-/* TEMP: sleep queue list*/
-static struct list sleep_list;
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -104,8 +102,7 @@ static struct list sleep_list;
 
    It is not safe to call thread_current() until this function
    finishes. */
-void
-thread_init (void) {
+void thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 
 	/* Reload the temporal gdt for the kernel
@@ -120,7 +117,8 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
-	list_init (&destruction_req);
+	list_init (&sleep_list); /* sleep list 초기화 */
+	list_init(&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -147,8 +145,7 @@ thread_start (void) {
 
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
-void
-thread_tick (void) {
+void thread_tick (void) {
 	struct thread *t = thread_current ();
 
 	/* Update statistics. */
@@ -228,8 +225,7 @@ thread_create (const char *name, int priority,
    This function must be called with interrupts turned off.  It
    is usually a better idea to use one of the synchronization
    primitives in synch.h. */
-void
-thread_block (void) {
+void thread_block (void) {
 	ASSERT (!intr_context ());
 	ASSERT (intr_get_level () == INTR_OFF);
 	thread_current ()->status = THREAD_BLOCKED;
@@ -241,7 +237,7 @@ thread_block (void) {
    make the running thread ready.)
 
    This function does not preempt the running thread.  This can
-   be important: if the caller had disabled interrupts itself,
+   be important: if the caller had disabled inSterrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
 void
@@ -319,6 +315,23 @@ void thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+void thread_sleep(int64_t wakeup_tick){
+	struct thread *curr = thread_current();
+	enum intr_level old_level;
+
+	ASSERT(!intr_context());
+
+	old_level = intr_disable();
+
+	if(curr != idle_thread){
+		curr->wakeup_tick = wakeup_tick;
+		if(wakeup_tick < global_tick)
+			set_global_tick(wakeup_tick);
+		list_push_back(&sleep_list, &curr->elem);
+	}
+	do_schedule(THREAD_BLOCKED);
+	intr_set_level(old_level);
+}
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
@@ -408,8 +421,7 @@ kernel_thread (thread_func *function, void *aux) {
 
 /* Does basic initialization of T as a blocked thread named
    NAME. */
-static void
-init_thread (struct thread *t, const char *name, int priority) {
+static void init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (t != NULL);
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
@@ -427,8 +439,7 @@ init_thread (struct thread *t, const char *name, int priority) {
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
-static struct thread *
-next_thread_to_run (void) {
+static struct thread *next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
 	else
@@ -536,8 +547,7 @@ thread_launch (struct thread *th) {
  * This function modify current thread's status to status and then
  * finds another thread to run and switches to it.
  * It's not safe to call printf() in the schedule(). */
-static void
-do_schedule(int status) {
+static void do_schedule(int status) {
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (thread_current()->status == THREAD_RUNNING);
 	while (!list_empty (&destruction_req)) {
@@ -597,4 +607,14 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+static set_global_tick(int64_t tick){
+	/* 입력받은 tick이 global_tick보다 크면 예외처리 */
+	if(global_tick < tick)
+		return 0;
+
+	/* global_tick 갱신 */
+	global_tick = tick;
+	return 1;
 }

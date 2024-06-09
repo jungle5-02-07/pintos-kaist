@@ -248,8 +248,7 @@ process_cleanup (void) {
 
 /* Sets up the CPU for running user code in the nest thread.
  * This function is called on every context switch. */
-void
-process_activate (struct thread *next) {
+void process_activate (struct thread *next) {
 	/* Activate thread's page tables. */
 	pml4_activate (next->pml4);
 

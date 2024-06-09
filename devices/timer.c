@@ -88,15 +88,21 @@ int64_t timer_elapsed (int64_t then) {
 void timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
-	ASSERT (intr_get_level () == INTR_ON); 
+	ASSERT (intr_get_level () == INTR_ON);
+	
 	/* NOTE: 주어진 tick만큼 thread_yield()를 통해 CPU를 양보 */
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	/* NOTE: [Remove] busy waiting을 유발하는 코드 삭제 */
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield (); 	
+
+	if(timer_elapsed(start) < ticks){
+		/* 현재 스레드를 일정 tick만큼 sleep 시키는 함수 호출 */
+		thread_sleep(start + ticks); 
+	}
 }
 
 /* Suspends execution for approximately MS milliseconds. */
-void
-timer_msleep (int64_t ms) {
+void timer_msleep (int64_t ms) {
 	real_time_sleep (ms, 1000);
 }
 
