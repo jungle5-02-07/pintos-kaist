@@ -315,23 +315,26 @@ void thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+/* NOTE: [Add] 현재 스레드를 재우고, 주어진 틱 시간에 깨어나도록 설정하는 함수
+ * wakeup_tick: 스레드가 깨어나야 하는 시간을 나타내는 tick 값 */
 void thread_sleep(int64_t wakeup_tick){
 	struct thread *curr = thread_current();
 	enum intr_level old_level;
 
 	ASSERT(!intr_context());
 
-	old_level = intr_disable();
+	old_level = intr_disable(); /* 인터럽트 비활성화 */
 
 	if(curr != idle_thread){
-		curr->wakeup_tick = wakeup_tick;
-		if(wakeup_tick < global_tick)
-			set_global_tick(wakeup_tick);
-		list_push_back(&sleep_list, &curr->elem);
+		curr->wakeup_tick = wakeup_tick; /* local tick 설정 */
+		if(wakeup_tick < global_tick) /* 필요시 global_tick 갱신 */
+			set_global_tick(wakeup_tick); /* awake 함수가 실행되어야 할 tick값을 갱신 */
+		list_push_back(&sleep_list, &curr->elem); /* sleep_list에 스레드 삽입 */
 	}
-	do_schedule(THREAD_BLOCKED);
-	intr_set_level(old_level);
+	do_schedule(THREAD_BLOCKED); /* 현재 스레드를 blocked 상태로 스케줄링 */
+	intr_set_level(old_level); /* 이전 인터럽트 복원 */
 }
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
